@@ -2,6 +2,7 @@
 let isCrawling = false;
 let currentTabId = null;
 let crawledItemIds = new Set();
+let currentTrackingStatus = null;
 
 // Function to reset crawling state
 function resetCrawlingState() {
@@ -38,6 +39,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.type === 'RESET_CRAWL_STATE') {
         resetCrawlingState();
         sendResponse({ success: true });
+    } else if (message.type === 'START_FETCH_TRACKING') {
+        handleFetchTracking(message, sender, sendResponse);
+        return true;
+    } else if (message.type === 'GET_CURRENT_STATUS') {
+        sendResponse(currentTrackingStatus);
+        return true;
     }
     return true;
 });
@@ -199,5 +206,67 @@ async function startCrawling(tabId) {
     } finally {
         // Always reset crawling state when done
         resetCrawlingState();
+    }
+}
+
+async function handleFetchTracking(message, sender, sendResponse) {
+    const BASE_API_URL = 'http://iamhere.vn:89/api/ggsheet';
+    const { sheetId, sheetName, tabId } = message;
+    try {
+        currentTrackingStatus = { currentPage: 0, totalItems: 0, status: 'Fetching orderId list from Google Sheet...' };
+        chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
+        const infoRes = await fetch(`${BASE_API_URL}/getInfo`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: sheetId, sheetName })
+        });
+        if (!infoRes.ok) throw new Error('Error calling getInfo API');
+        const infoData = await infoRes.json();
+        if (!infoData.data || !Array.isArray(infoData.data)) throw new Error('Invalid API response');
+        const orderIds = infoData.data;
+        if (orderIds.length === 0) throw new Error('No orderId found in sheet!');
+        currentTrackingStatus = { currentPage: 0, totalItems: orderIds.length, status: `Crawling tracking number for ${orderIds.length} orderId...` };
+        chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
+        for (let i = 0; i < orderIds.length; i++) {
+            const orderId = orderIds[i];
+            currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `(${i+1}/${orderIds.length}) Getting tracking for orderId: ${orderId}` };
+            chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
+            // Open tracking tab
+            const trackingUrl = `https://www.aliexpress.com/p/tracking/index.html?_addShare=no&_login=yes&tradeOrderId=${orderId}`;
+            const trackingTab = await chrome.tabs.create({ url: trackingUrl, active: false });
+            await new Promise(resolve => setTimeout(resolve, 4000));
+            // Inject script to get tracking number
+            const [{ result: trackingNumberRaw }] = await chrome.scripting.executeScript({
+                target: { tabId: trackingTab.id },
+                func: () => {
+                    const el = document.querySelector('.logistic-info-v2--mailNoValue--X0fPzen');
+                    return el ? el.textContent.trim() : '';
+                }
+            });
+            const trackingNumber = trackingNumberRaw || 'Error!';
+            await chrome.tabs.remove(trackingTab.id);
+            // Update sheet
+            currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Updating tracking for orderId: ${orderId}...` };
+            chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
+            const datamap = {};
+            datamap[orderId] = trackingNumber;
+            const updateRes = await fetch(`${BASE_API_URL}/update`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: sheetId, sheetName, datamap })
+            });
+            if (!updateRes.ok) {
+                currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Error updating orderId: ${orderId}` };
+                chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
+            } else {
+                currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Updated tracking for orderId: ${orderId}` };
+                chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
+            }
+        }
+        currentTrackingStatus = { currentPage: orderIds.length, totalItems: orderIds.length, status: 'All tracking numbers updated!' };
+        chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
+    } catch (error) {
+        currentTrackingStatus = { currentPage: 0, totalItems: 0, status: 'Error: ' + error.message };
+        chrome.runtime.sendMessage({ type: 'CRAWL_ERROR', error: error.message });
     }
 } 
