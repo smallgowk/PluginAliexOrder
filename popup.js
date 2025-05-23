@@ -27,6 +27,7 @@ function initializeExtension() {
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.type === 'UPDATE_STATUS') {
             crawlStatus.textContent = message.data.status || `Crawling page ${message.data.currentPage}... Found ${message.data.totalItems} items so far`;
+            crawlButton.disabled = !!message.data.isTaskRunning;
         } else if (message.type === 'CRAWL_COMPLETE') {
             crawlStatus.textContent = `Crawling completed. Found ${message.data.totalItems} items in total`;
             crawlButton.disabled = false;
@@ -79,6 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const crawlStatus = document.getElementById('crawlStatus');
             if (crawlStatus) crawlStatus.textContent = status.status;
         }
+        crawlButton.disabled = !!(status && status.isTaskRunning);
     });
     initializeExtension();
 }); 

@@ -3,6 +3,8 @@ let isCrawling = false;
 let currentTabId = null;
 let crawledItemIds = new Set();
 let currentTrackingStatus = null;
+let isTaskRunning = false;
+let lastTrackingMessage = null;
 
 // Function to reset crawling state
 function resetCrawlingState() {
@@ -40,10 +42,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         resetCrawlingState();
         sendResponse({ success: true });
     } else if (message.type === 'START_FETCH_TRACKING') {
+        if (isTaskRunning) {
+            chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: { ...currentTrackingStatus, isTaskRunning: true } });
+            return true;
+        }
+        isTaskRunning = true;
+        currentTrackingStatus = { ...currentTrackingStatus, isTaskRunning: true };
+        lastTrackingMessage = message;
+        chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: { ...currentTrackingStatus, status: 'Started tracking...', isTaskRunning: true } });
         handleFetchTracking(message, sender, sendResponse);
         return true;
+    } else if (message.type === 'STOP_FETCH_TRACKING') {
+        isTaskRunning = false;
+        currentTrackingStatus = { ...currentTrackingStatus, isTaskRunning: false };
+        chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: { ...currentTrackingStatus, status: 'Stopped. Press Start to run again.', isTaskRunning: false } });
+        return true;
     } else if (message.type === 'GET_CURRENT_STATUS') {
-        sendResponse(currentTrackingStatus);
+        sendResponse({ ...currentTrackingStatus, isTaskRunning });
         return true;
     }
     return true;
@@ -213,7 +228,7 @@ async function handleFetchTracking(message, sender, sendResponse) {
     const BASE_API_URL = 'http://iamhere.vn:89/api/ggsheet';
     const { sheetId, sheetName, tabId } = message;
     try {
-        currentTrackingStatus = { currentPage: 0, totalItems: 0, status: 'Fetching orderId list from Google Sheet...' };
+        currentTrackingStatus = { currentPage: 0, totalItems: 0, status: 'Fetching orderId list from Google Sheet...', isTaskRunning: true };
         chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
         const infoRes = await fetch(`${BASE_API_URL}/getInfo`, {
             method: 'POST',
@@ -225,11 +240,11 @@ async function handleFetchTracking(message, sender, sendResponse) {
         if (!infoData.data || !Array.isArray(infoData.data)) throw new Error('Invalid API response');
         const orderIds = infoData.data;
         if (orderIds.length === 0) throw new Error('No orderId found in sheet!');
-        currentTrackingStatus = { currentPage: 0, totalItems: orderIds.length, status: `Crawling tracking number for ${orderIds.length} orderId...` };
+        currentTrackingStatus = { currentPage: 0, totalItems: orderIds.length, status: `Crawling tracking number for ${orderIds.length} orderId...`, isTaskRunning: true };
         chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
         for (let i = 0; i < orderIds.length; i++) {
             const orderId = orderIds[i];
-            currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `(${i+1}/${orderIds.length}) Getting tracking for orderId: ${orderId}` };
+            currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `(${i+1}/${orderIds.length}) Getting tracking for orderId: ${orderId}`, isTaskRunning: true };
             chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
             // Open tracking tab
             const trackingUrl = `https://www.aliexpress.com/p/tracking/index.html?_addShare=no&_login=yes&tradeOrderId=${orderId}`;
@@ -246,7 +261,7 @@ async function handleFetchTracking(message, sender, sendResponse) {
             const trackingNumber = trackingNumberRaw || 'Error!';
             await chrome.tabs.remove(trackingTab.id);
             // Update sheet
-            currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Updating tracking for orderId: ${orderId}...` };
+            currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Updating tracking for orderId: ${orderId}...`, isTaskRunning: true };
             chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
             const datamap = {};
             datamap[orderId] = trackingNumber;
@@ -256,17 +271,20 @@ async function handleFetchTracking(message, sender, sendResponse) {
                 body: JSON.stringify({ id: sheetId, sheetName, datamap })
             });
             if (!updateRes.ok) {
-                currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Error updating orderId: ${orderId}` };
+                currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Error updating orderId: ${orderId}`, isTaskRunning: true };
                 chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
             } else {
-                currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Updated tracking for orderId: ${orderId}` };
+                currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Updated tracking for orderId: ${orderId}`, isTaskRunning: true };
                 chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
             }
         }
-        currentTrackingStatus = { currentPage: orderIds.length, totalItems: orderIds.length, status: 'All tracking numbers updated!' };
+        currentTrackingStatus = { currentPage: orderIds.length, totalItems: orderIds.length, status: 'All tracking numbers updated!', isTaskRunning: false };
+        isTaskRunning = false;
         chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
     } catch (error) {
-        currentTrackingStatus = { currentPage: 0, totalItems: 0, status: 'Error: ' + error.message };
+        currentTrackingStatus = { currentPage: 0, totalItems: 0, status: 'Error: ' + error.message, isTaskRunning: false };
+        isTaskRunning = false;
         chrome.runtime.sendMessage({ type: 'CRAWL_ERROR', error: error.message });
+        chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
     }
 } 
