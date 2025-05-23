@@ -91,13 +91,14 @@ function initializeExtension() {
                 await new Promise(resolve => setTimeout(resolve, 4000));
                 // Inject script to get tracking number
                 console.log('[Step] Injecting script to get tracking number...');
-                const [{ result: trackingNumber }] = await chrome.scripting.executeScript({
+                const [{ result: trackingNumberRaw }] = await chrome.scripting.executeScript({
                     target: { tabId: trackingTab.id },
                     func: () => {
                         const el = document.querySelector('.logistic-info-v2--mailNoValue--X0fPzen');
                         return el ? el.textContent.trim() : '';
                     }
                 });
+                const trackingNumber = trackingNumberRaw || 'Error!';
                 console.log(`[Step] Got tracking number for orderId ${orderId}:`, trackingNumber);
                 // Close tab
                 console.log('[Step] Closing tracking tab...');
@@ -107,7 +108,7 @@ function initializeExtension() {
                 crawlStatus.textContent = `Updating tracking for orderId: ${orderId}...`;
                 console.log(`[Step] Calling update API for orderId: ${orderId}`);
                 const datamap = {};
-                datamap[orderId] = trackingNumber || '';
+                datamap[orderId] = trackingNumber;
                 const updateRes = await fetch(`${BASE_API_URL}/update`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
