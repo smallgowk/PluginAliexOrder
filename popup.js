@@ -5,13 +5,15 @@ function initializeExtension() {
     const crawlButton = document.getElementById('crawlButton');
     const crawlStatus = document.getElementById('crawlStatus');
     const autoRerunToggle = document.getElementById('autoRerunToggle');
+    const intervalInput = document.getElementById('intervalInput');
 
     // Check if required elements exist
-    if (!crawlButton || !crawlStatus || !autoRerunToggle) {
+    if (!crawlButton || !crawlStatus || !autoRerunToggle || !intervalInput) {
         console.error('Missing required elements:', {
             crawlButton: !!crawlButton,
             crawlStatus: !!crawlStatus,
-            autoRerunToggle: !!autoRerunToggle
+            autoRerunToggle: !!autoRerunToggle,
+            intervalInput: !!intervalInput
         });
         return;
     }
@@ -72,14 +74,93 @@ function initializeExtension() {
         }
     });
 
-    // Khôi phục trạng thái Auto-Rerun khi mở popup
-    chrome.storage.local.get(['autoRerunEnabled'], function(result) {
-        if (autoRerunToggle) autoRerunToggle.checked = !!result.autoRerunEnabled;
+    // Khôi phục trạng thái Auto-Rerun và interval khi mở popup
+    chrome.storage.local.get(['autoRerunEnabled', 'autoRerunInterval'], function(result) {
+        if (autoRerunToggle) {
+            autoRerunToggle.checked = !!result.autoRerunEnabled;
+        }
+        
+        if (intervalInput) {
+            intervalInput.value = result.autoRerunInterval || 10;
+        }
+        
+        // Gửi trạng thái hiện tại đến background script
+        chrome.runtime.sendMessage({
+            type: 'SET_AUTO_RERUN',
+            enabled: !!result.autoRerunEnabled,
+            intervalSeconds: parseInt(intervalInput.value) || 10
+        });
     });
-    // Lưu trạng thái khi thay đổi
+
+    // Xử lý thay đổi interval
+    if (intervalInput) {
+        intervalInput.addEventListener('input', function() {
+            let interval = parseInt(intervalInput.value);
+            
+            // Validate interval (5-3600 seconds)
+            if (isNaN(interval) || interval < 5) {
+                interval = 5;
+                intervalInput.value = 5;
+            } else if (interval > 3600) {
+                interval = 3600;
+                intervalInput.value = 3600;
+            }
+            
+            // Lưu interval vào storage
+            chrome.storage.local.set({ autoRerunInterval: interval });
+            
+            // Gửi interval mới đến background script
+            chrome.runtime.sendMessage({
+                type: 'SET_AUTO_RERUN_INTERVAL',
+                intervalSeconds: interval
+            }, function(response) {
+                if (response && response.success) {
+                    console.log('Auto-rerun interval updated to:', interval, 'seconds');
+                }
+            });
+        });
+        
+        // Xử lý khi người dùng blur khỏi input (đảm bảo giá trị hợp lệ)
+        intervalInput.addEventListener('blur', function() {
+            let interval = parseInt(intervalInput.value);
+            if (isNaN(interval) || interval < 5) {
+                intervalInput.value = 5;
+                intervalInput.dispatchEvent(new Event('input'));
+            } else if (interval > 3600) {
+                intervalInput.value = 3600;
+                intervalInput.dispatchEvent(new Event('input'));
+            }
+        });
+    }
+
+    // Lưu trạng thái khi thay đổi toggle
     if (autoRerunToggle) {
         autoRerunToggle.addEventListener('change', function() {
-            chrome.storage.local.set({ autoRerunEnabled: autoRerunToggle.checked });
+            const isEnabled = autoRerunToggle.checked;
+            const interval = parseInt(intervalInput.value) || 10;
+            
+            // Lưu trạng thái vào storage
+            chrome.storage.local.set({ autoRerunEnabled: isEnabled });
+            
+            // Gửi message đến background script để bật/tắt auto-rerun
+            chrome.runtime.sendMessage({
+                type: 'SET_AUTO_RERUN',
+                enabled: isEnabled,
+                intervalSeconds: interval
+            }, function(response) {
+                if (response && response.success) {
+                    console.log('Auto-rerun', isEnabled ? 'enabled' : 'disabled', 'with interval:', interval, 'seconds');
+                    
+                    // Cập nhật status message
+                    if (isEnabled) {
+                        crawlStatus.textContent = `Auto-rerun enabled. Will restart every ${interval} seconds when idle.`;
+                    } else {
+                        crawlStatus.textContent = 'Auto-rerun disabled.';
+                    }
+                } else {
+                    console.error('Failed to set auto-rerun state');
+                }
+            });
         });
     }
 
@@ -93,7 +174,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const crawlStatus = document.getElementById('crawlStatus');
             if (crawlStatus) crawlStatus.textContent = status.status;
         }
-        crawlButton.disabled = !!(status && status.isTaskRunning);
+        const crawlButton = document.getElementById('crawlButton');
+        if (crawlButton) crawlButton.disabled = !!(status && status.isTaskRunning);
     });
     initializeExtension();
-}); 
+});
