@@ -4,12 +4,14 @@ function initializeExtension() {
     
     const crawlButton = document.getElementById('crawlButton');
     const crawlStatus = document.getElementById('crawlStatus');
+    const autoRerunToggle = document.getElementById('autoRerunToggle');
 
     // Check if required elements exist
-    if (!crawlButton || !crawlStatus) {
+    if (!crawlButton || !crawlStatus || !autoRerunToggle) {
         console.error('Missing required elements:', {
             crawlButton: !!crawlButton,
-            crawlStatus: !!crawlStatus
+            crawlStatus: !!crawlStatus,
+            autoRerunToggle: !!autoRerunToggle
         });
         return;
     }
@@ -69,6 +71,17 @@ function initializeExtension() {
             crawlButton.disabled = false;
         }
     });
+
+    // Khôi phục trạng thái Auto-Rerun khi mở popup
+    chrome.storage.local.get(['autoRerunEnabled'], function(result) {
+        if (autoRerunToggle) autoRerunToggle.checked = !!result.autoRerunEnabled;
+    });
+    // Lưu trạng thái khi thay đổi
+    if (autoRerunToggle) {
+        autoRerunToggle.addEventListener('change', function() {
+            chrome.storage.local.set({ autoRerunEnabled: autoRerunToggle.checked });
+        });
+    }
 
     console.log('Extension initialized successfully');
 }
