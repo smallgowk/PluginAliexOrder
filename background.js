@@ -130,34 +130,6 @@ async function crawlPage(tabId) {
     }
 }
 
-// Function to export IDs to file
-async function exportIdsToFile(ids) {
-    try {
-        const fileName = `item_ids_${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
-        const content = Array.from(ids).join('\n');
-        
-        // Create a Blob using the Blob constructor
-        const blob = new Blob([content], { type: 'text/plain' });
-        
-        // Create a download URL using chrome.runtime.getURL
-        const url = await chrome.runtime.getURL('download.html');
-        
-        // Send the data to the download page
-        await chrome.runtime.sendMessage({
-            type: 'DOWNLOAD_DATA',
-            data: {
-                content: content,
-                fileName: fileName
-            }
-        });
-        
-        return fileName;
-    } catch (error) {
-        console.error('Error exporting file:', error);
-        throw error;
-    }
-}
-
 let pageCount = 0;
 const maxPages = 10;
 
@@ -193,24 +165,6 @@ async function startCrawling(tabId) {
 
             // Wait for page to load
             await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-
-        if (crawledItemIds.size > 0) {
-            try {
-                const fileName = await exportIdsToFile(crawledItemIds);
-                chrome.runtime.sendMessage({
-                    type: 'EXPORT_COMPLETE',
-                    data: {
-                        fileName: fileName,
-                        totalItems: crawledItemIds.size
-                    }
-                });
-            } catch (error) {
-                chrome.runtime.sendMessage({
-                    type: 'EXPORT_ERROR',
-                    error: 'Failed to export file'
-                });
-            }
         }
     } catch (error) {
         console.error('Error in startCrawling:', error);
