@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Excel Template Processor",
+  "name": "Get Aliex TrackingNumber",
   "version": "1.0",
-  "description": "Process Excel templates and crawl AliExpress items",
+  "description": "Getting tracking number from order id",
   "permissions": [
     "storage",
     "downloads",

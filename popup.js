@@ -38,6 +38,8 @@ function initializeExtension() {
         }
     });
 
+    const BASE_API_URL = 'http://iamhere.vn:89/api/ggsheet';
+
     // Handle URL crawling
     crawlButton.addEventListener('click', async function() {
         console.log('[Start] Button clicked');
@@ -62,7 +64,7 @@ function initializeExtension() {
             crawlStatus.textContent = 'Fetching orderId list from Google Sheet...';
             console.log('[Step] Calling getInfo API...');
             // Call API to get orderId
-            const infoRes = await fetch('http://localhost:89/api/ggsheet/getInfo', {
+            const infoRes = await fetch(`${BASE_API_URL}/getInfo`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ id: sheetId, sheetName })
@@ -106,7 +108,7 @@ function initializeExtension() {
                 console.log(`[Step] Calling update API for orderId: ${orderId}`);
                 const datamap = {};
                 datamap[orderId] = trackingNumber || '';
-                const updateRes = await fetch('http://localhost:89/api/ggsheet/update', {
+                const updateRes = await fetch(`${BASE_API_URL}/update`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: sheetId, sheetName, datamap })

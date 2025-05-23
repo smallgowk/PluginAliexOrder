@@ -1,6 +1,6 @@
-# Excel Template Processor Chrome Extension
+# Get Aliex TrackingNumber Chrome Extension
 
-A Chrome extension that allows you to select Excel template files, input files, and output directories for processing.
+A Chrome extension that allows you to select Excel template files, input files, and output directories for processing tracking numbers from AliExpress.
 
 ## Features
 
