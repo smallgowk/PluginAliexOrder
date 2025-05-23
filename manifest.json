@@ -5,8 +5,6 @@
   "description": "Getting tracking number from order id",
   "permissions": [
     "storage",
-    "downloads",
-    "activeTab",
     "scripting",
     "tabs"
   ],
