@@ -4,6 +4,19 @@ function initializeExtension() {
     
     const crawlButton = document.getElementById('crawlButton');
     const crawlStatus = document.getElementById('crawlStatus');
+    const sheetNameInput = document.getElementById('sheetNameInput');
+
+    // Load sheetName from localStorage nếu có
+    if (sheetNameInput) {
+        const savedSheetName = localStorage.getItem('sheetName');
+        if (savedSheetName) {
+            sheetNameInput.value = savedSheetName;
+        }
+        // Lưu lại mỗi khi người dùng thay đổi
+        sheetNameInput.addEventListener('input', function() {
+            localStorage.setItem('sheetName', sheetNameInput.value);
+        });
+    }
 
     // Check if required elements exist
     if (!crawlButton || !crawlStatus) {
@@ -87,7 +100,8 @@ function initializeExtension() {
                 if (!match) throw new Error('Current tab is not a Google Sheets!');
                 
                 const sheetId = match[1];
-                const sheetName = 'Tiktok Shop'; // Can be made dynamic if needed
+                const sheetNameInput = document.getElementById('sheetNameInput');
+                const sheetName = sheetNameInput && sheetNameInput.value ? sheetNameInput.value : 'Tiktok Shop';
 
                 // Send message to background to start fetching
                 const response = await chrome.runtime.sendMessage({
