@@ -182,7 +182,7 @@ async function startCrawling(tabId) {
 }
 
 async function handleFetchTracking(message, sender, sendResponse) {
-    const BASE_API_URL = 'http://localhost:89/api/ggsheet';
+    const BASE_API_URL = 'http://iamhere.vn:89/api/ggsheet';
     const { sheetId, sheetName, tabId } = message;
     try {
         currentTrackingStatus = { currentPage: 0, totalItems: 0, status: 'Fetching orderId list from Google Sheet...', isTaskRunning: true };
@@ -231,64 +231,16 @@ async function handleFetchTracking(message, sender, sendResponse) {
             const trackingNumber = trackingNumberRaw || 'Error!';
             await chrome.tabs.remove(trackingTab.id);
             
-            // --- Lấy tracking status từ Cainiao ---
-            let trackingStatus = '';
-            if (trackingNumber && trackingNumber !== 'Error!') {
-                const cainiaoUrl = `https://global.cainiao.com/newDetail.htm?mailNoList=${trackingNumber}&otherMailNoList=`;
-                const cainiaoTab = await chrome.tabs.create({ url: cainiaoUrl, active: false });
-                await new Promise(resolve => setTimeout(resolve, 4000));
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                try {
-                    const [{ result: statusText }] = await chrome.scripting.executeScript({
-                        target: { tabId: cainiaoTab.id },
-                        func: () => {
-                            const el = document.querySelector('span.TrackingDetail--head--20GpNSP.TrackingDetail--headFirst--1mBxADn');
-                            return el ? el.textContent.trim() : '';
-                        }
-                    });
-                    if (statusText) {
-                        trackingStatus = statusText;
-                    } else {
-                        // Nếu không lấy được status, kiểm tra thẻ warnning-text
-                        const [{ result: warnText }] = await chrome.scripting.executeScript({
-                            target: { tabId: cainiaoTab.id },
-                            func: () => {
-                                const warn = document.querySelector('div.warnning-text');
-                                return warn ? warn.textContent.trim() : '';
-                            }
-                        });
-                        if (warnText && warnText.includes('unusual traffic')) {
-                            trackingStatus = 'Limit Traffic';
-                        } else {
-                            trackingStatus = 'Error';
-                        }
-                    }
-                } catch (e) {
-                    trackingStatus = 'Error';
-                }
-                await chrome.tabs.remove(cainiaoTab.id);
-                // Log ra console và gửi về popup
-                console.log(`Tracking status for ${trackingNumber}: ${trackingStatus}`);
-                chrome.runtime.sendMessage({ type: 'TRACKING_STATUS', data: { orderId, trackingNumber, trackingStatus } });
-            }
-            // --- END tracking status ---
-            
             // Update sheet
             currentTrackingStatus = { currentPage: i+1, totalItems: orderIds.length, status: `Updating tracking for orderId: ${orderId}...`, isTaskRunning: true };
             chrome.runtime.sendMessage({ type: 'UPDATE_STATUS', data: currentTrackingStatus });
             
-            // Sửa payload gửi lên API update
-            const updatePayload = {
-                id: sheetId,
-                sheetName,
-                orderId,
-                trackingNumber,
-                trackingStatus
-            };
+            const datamap = {};
+            datamap[orderId] = trackingNumber;
             const updateRes = await fetch(`${BASE_API_URL}/update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatePayload)
+                body: JSON.stringify({ id: sheetId, sheetName, datamap })
             });
             
             if (!updateRes.ok) {
